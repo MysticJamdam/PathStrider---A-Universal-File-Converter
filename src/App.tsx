@@ -19,11 +19,11 @@ function App() {
   const [isDragging, setIsDragging] =
     useState(false);
 
-  const [filePath, setFilePath] =
-    useState("");
+  const [filePaths, setFilePaths] =
+    useState<string[]>([]);
 
-  const [fileName, setFileName] =
-    useState("");
+  const [fileNames, setFileNames] =
+    useState<string[]>([]);
 
   const [targetFormat, setTargetFormat] =
     useState("png");
@@ -33,73 +33,83 @@ function App() {
 
   useEffect(() => {
 
-  const appWindow =
-    getCurrentWindow();
+    const appWindow =
+      getCurrentWindow();
 
-  const setup = async () => {
+    const setup = async () => {
 
-    const unlisten =
-      await appWindow.onDragDropEvent(
-        (event) => {
-
-          if (
-            event.payload.type === "drop"
-          ) {
-
-            const paths =
-              event.payload.paths;
+      const unlisten =
+        await appWindow.onDragDropEvent(
+          (event) => {
 
             if (
-              paths &&
-              paths.length > 0
+              event.payload.type === "drop"
             ) {
 
-              const path =
-                paths[0];
+              const paths =
+                event.payload.paths;
 
-              setFilePath(path);
+              if (
+                paths &&
+                paths.length > 0
+              ) {
 
-              const parts =
-                path.split("\\");
+                setFilePaths((prev) => [
+                  ...prev,
+                  ...paths
+                ]);
 
-              setFileName(
-                parts[
-                  parts.length - 1
-                ]
-              );
+
+                const names =
+                  paths.map(
+                    (path) => {
+
+                      const parts =
+                        path.split("\\");
+
+                      return parts[
+                        parts.length - 1
+                      ];
+                    }
+                  );
+
+                setFileNames((prev) => [
+                  ...prev,
+                  ...names
+                ]);
+
+                setIsDragging(false);
+              }
+            }
+
+            if (
+              event.payload.type === "enter"
+            ) {
+
+              setIsDragging(true);
+            }
+
+            if (
+              event.payload.type === "leave"
+            ) {
 
               setIsDragging(false);
             }
           }
+        );
 
-          if (
-            event.payload.type === "enter"
-          ) {
+      return unlisten;
+    };
 
-            setIsDragging(true);
-          }
+    setup();
 
-          if (
-            event.payload.type === "leave"
-          ) {
-
-            setIsDragging(false);
-          }
-        }
-      );
-
-    return unlisten;
-  };
-
-  setup();
-
-}, []);
+  }, []);
 
   const selectFile = async () => {
 
     const selected = await open({
 
-      multiple: false,
+      multiple: true,
 
       filters: [
         {
@@ -117,25 +127,40 @@ function App() {
 
     if (
       selected &&
-      typeof selected === "string"
+      Array.isArray(selected)
     ) {
+      setFilePaths((prev) => [
+  ...prev,
+  ...selected
+]);
 
-      setFilePath(selected);
+const names =
+  selected.map(
+    (path) => {
 
       const parts =
-        selected.split("\\");
+        path.split("\\");
 
-      setFileName(
-        parts[parts.length - 1]
-      );
+      return parts[
+        parts.length - 1
+      ];
+    }
+  );
+
+setFileNames((prev) => [
+  ...prev,
+  ...names
+]);
     }
   };
 
   const handleConvert = async () => {
 
-    if (!filePath) {
+    if (
+      filePaths.length === 0
+    ) {
 
-      alert("Select a file");
+      alert("Select files");
 
       return;
     }
@@ -144,33 +169,48 @@ function App() {
 
       setLoading(true);
 
-      const suggestedName =
-        `${fileName.split(".")[0]}_converted.${targetFormat}`;
+      for (
+        let i = 0;
+        i < filePaths.length;
+        i++
+      ) {
 
-      const savePath = await save({
+        const path =
+          filePaths[i];
 
-        defaultPath: suggestedName
-      });
+        const name =
+          fileNames[i];
 
-      if (!savePath) {
+        const suggestedName =
+          `${name.split(".")[0]}_converted.${targetFormat}`;
 
-        setLoading(false);
+        const savePath =
+          await save({
 
-        return;
-      }
+            defaultPath:
+              suggestedName
+          });
 
-      const outputPath =
-        await invoke<string>(
+        if (!savePath) {
+          continue;
+        }
+
+        await invoke(
           "convert_image",
           {
-            inputPath: filePath,
-            outputPath: savePath,
-            outputFormat: targetFormat
+            inputPath: path,
+
+            outputPath:
+              savePath,
+
+            outputFormat:
+              targetFormat
           }
         );
+      }
 
       alert(
-        `Saved successfully:\n\n${outputPath}`
+        "Batch conversion completed"
       );
 
     } catch (error) {
@@ -248,7 +288,7 @@ function App() {
         >
 
           <p>
-            Drag & Drop File Here
+            Drag & Drop Files Here
           </p>
 
           <p>
@@ -258,7 +298,7 @@ function App() {
         </div>
 
         {
-          fileName && (
+          fileNames.length > 0 && (
 
             <div
               style={{
@@ -269,12 +309,33 @@ function App() {
             >
 
               <p>
-                <strong>Selected:</strong>
+                <strong>
+                  Selected Files:
+                </strong>
               </p>
 
-              <p>
-                {fileName}
-              </p>
+              <div
+                style={{
+                  maxHeight: "150px",
+                  overflowY: "auto",
+                }}
+              >
+
+                {
+                  fileNames.map(
+                    (
+                      name,
+                      index
+                    ) => (
+
+                      <p key={index}>
+                        {name}
+                      </p>
+                    )
+                  )
+                }
+
+              </div>
 
             </div>
           )
@@ -338,7 +399,7 @@ function App() {
           {
             loading
               ? "Converting..."
-              : "Convert File"
+              : "Convert Files"
           }
 
         </button>
