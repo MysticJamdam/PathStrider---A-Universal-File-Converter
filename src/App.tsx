@@ -1,6 +1,13 @@
-import { useState } from "react";
+import {
+  useEffect,
+  useState
+} from "react";
 
 import { invoke } from "@tauri-apps/api/core";
+
+import {
+  getCurrentWindow
+} from "@tauri-apps/api/window";
 
 import {
   open,
@@ -8,6 +15,9 @@ import {
 } from "@tauri-apps/plugin-dialog";
 
 function App() {
+
+  const [isDragging, setIsDragging] =
+    useState(false);
 
   const [filePath, setFilePath] =
     useState("");
@@ -21,6 +31,70 @@ function App() {
   const [loading, setLoading] =
     useState(false);
 
+  useEffect(() => {
+
+  const appWindow =
+    getCurrentWindow();
+
+  const setup = async () => {
+
+    const unlisten =
+      await appWindow.onDragDropEvent(
+        (event) => {
+
+          if (
+            event.payload.type === "drop"
+          ) {
+
+            const paths =
+              event.payload.paths;
+
+            if (
+              paths &&
+              paths.length > 0
+            ) {
+
+              const path =
+                paths[0];
+
+              setFilePath(path);
+
+              const parts =
+                path.split("\\");
+
+              setFileName(
+                parts[
+                  parts.length - 1
+                ]
+              );
+
+              setIsDragging(false);
+            }
+          }
+
+          if (
+            event.payload.type === "enter"
+          ) {
+
+            setIsDragging(true);
+          }
+
+          if (
+            event.payload.type === "leave"
+          ) {
+
+            setIsDragging(false);
+          }
+        }
+      );
+
+    return unlisten;
+  };
+
+  setup();
+
+}, []);
+
   const selectFile = async () => {
 
     const selected = await open({
@@ -30,6 +104,7 @@ function App() {
       filters: [
         {
           name: "Images",
+
           extensions: [
             "png",
             "jpg",
@@ -58,59 +133,59 @@ function App() {
 
   const handleConvert = async () => {
 
-  if (!filePath) {
+    if (!filePath) {
 
-    alert("Select a file");
-
-    return;
-  }
-
-  try {
-
-    setLoading(true);
-
-    const suggestedName =
-      `${fileName.split(".")[0]}_converted.${targetFormat}`;
-
-    const savePath = await save({
-
-      defaultPath: suggestedName
-    });
-
-    if (!savePath) {
-
-      setLoading(false);
+      alert("Select a file");
 
       return;
     }
 
-    const outputPath =
-      await invoke<string>(
-        "convert_image",
-        {
-          inputPath: filePath,
-          outputPath: savePath,
-          outputFormat: targetFormat
-        }
+    try {
+
+      setLoading(true);
+
+      const suggestedName =
+        `${fileName.split(".")[0]}_converted.${targetFormat}`;
+
+      const savePath = await save({
+
+        defaultPath: suggestedName
+      });
+
+      if (!savePath) {
+
+        setLoading(false);
+
+        return;
+      }
+
+      const outputPath =
+        await invoke<string>(
+          "convert_image",
+          {
+            inputPath: filePath,
+            outputPath: savePath,
+            outputFormat: targetFormat
+          }
+        );
+
+      alert(
+        `Saved successfully:\n\n${outputPath}`
       );
 
-    alert(
-      `Saved successfully:\n\n${outputPath}`
-    );
+    } catch (error) {
 
-  } catch (error) {
+      console.error(error);
 
-    console.error(error);
+      alert(
+        `Conversion failed:\n${error}`
+      );
 
-    alert(
-      `Conversion failed:\n${error}`
-    );
+    } finally {
 
-  } finally {
-
-    setLoading(false);
-  }
-};
+      setLoading(false);
+    }
+  };
 
   return (
 
@@ -146,19 +221,41 @@ function App() {
           Universal File Converter
         </h1>
 
-        <button
+        <div
           onClick={selectFile}
+
           style={{
-            padding: "12px",
-            border: "none",
-            borderRadius: "8px",
-            backgroundColor: "#333",
-            color: "white",
+
+            padding: "40px",
+
+            borderRadius: "12px",
+
+            border: isDragging
+              ? "2px solid #4f46e5"
+              : "2px dashed gray",
+
+            textAlign: "center",
+
             cursor: "pointer",
+
+            backgroundColor:
+              isDragging
+                ? "#1f1f2e"
+                : "#222",
+
+            transition: "0.2s",
           }}
         >
-          Choose File
-        </button>
+
+          <p>
+            Drag & Drop File Here
+          </p>
+
+          <p>
+            or click to browse
+          </p>
+
+        </div>
 
         {
           fileName && (
@@ -185,11 +282,13 @@ function App() {
 
         <select
           value={targetFormat}
+
           onChange={(e) =>
             setTargetFormat(
               e.target.value
             )
           }
+
           style={{
             padding: "10px",
             borderRadius: "6px",
@@ -212,17 +311,26 @@ function App() {
 
         <button
           onClick={handleConvert}
+
           disabled={loading}
+
           style={{
+
             padding: "12px",
+
             border: "none",
+
             borderRadius: "8px",
+
             backgroundColor:
               loading
                 ? "gray"
                 : "#4f46e5",
+
             color: "white",
+
             fontSize: "16px",
+
             cursor: "pointer",
           }}
         >
