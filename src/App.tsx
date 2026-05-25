@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 
 function App() {
   const [isDragging, setIsDragging] = useState(false);
@@ -13,9 +13,17 @@ function App() {
 
   const [fileNames, setFileNames] = useState<string[]>([]);
 
-  const [targetFormat, setTargetFormat] = useState("png");
+  const [fromFormat, setFromFormat] = useState("image");
+
+  const [toFormat, setToFormat] = useState("png");
 
   const [loading, setLoading] = useState(false);
+
+  const [outputFolder, setOutputFolder] = useState("");
+
+  const [customName, setCustomName] = useState("");
+
+  const [pdfQuality, setPdfQuality] = useState("balanced");
 
   useEffect(() => {
     const appWindow = getCurrentWindow();
@@ -56,16 +64,37 @@ function App() {
   }, []);
 
   const selectFile = async () => {
-    const selected = await open({
-      multiple: true,
+    let filters: {
+      name: string;
+      extensions: string[];
+    }[] = [];
 
-      filters: [
+    // IMAGE INPUT
+    if (fromFormat === "image") {
+      filters = [
         {
           name: "Images",
 
           extensions: ["png", "jpg", "jpeg", "webp"],
         },
-      ],
+      ];
+    }
+
+    // PDF INPUT
+    if (fromFormat === "pdf") {
+      filters = [
+        {
+          name: "PDF",
+
+          extensions: ["pdf"],
+        },
+      ];
+    }
+
+    const selected = await open({
+      multiple: true,
+
+      filters,
     });
 
     if (selected && Array.isArray(selected)) {
@@ -81,6 +110,18 @@ function App() {
     }
   };
 
+  const selectOutputFolder = async () => {
+    const selected = await open({
+      directory: true,
+
+      multiple: false,
+    });
+
+    if (selected && typeof selected === "string") {
+      setOutputFolder(selected);
+    }
+  };
+
   const handleConvert = async () => {
     if (filePaths.length === 0) {
       alert("Select files");
@@ -88,25 +129,53 @@ function App() {
       return;
     }
 
+    if (!outputFolder) {
+      alert("Select output folder");
+
+      return;
+    }
+
     try {
       setLoading(true);
 
-      // IMAGE -> PDF
-      if (targetFormat === "pdf") {
-        const savePath = await save({
-          defaultPath: "converted.pdf",
-        });
+      // PDF -> COMPRESSED PDF
+      if (fromFormat === "pdf" && toFormat === "compressed") {
+        for (let i = 0; i < filePaths.length; i++) {
+          const path = filePaths[i];
 
-        if (!savePath) {
-          setLoading(false);
+          const name = fileNames[i];
 
-          return;
+          const baseName =
+            customName.trim() !== ""
+              ? `${customName}_${i + 1}`
+              : name.split(".")[0];
+
+          const outputPath = `${outputFolder}\\${baseName}_compressed.pdf`;
+
+          await invoke("compress_pdf", {
+            inputPath: path,
+
+            outputPath,
+
+            quality: pdfQuality,
+          });
         }
+
+        alert("PDF compression completed");
+
+        return;
+      }
+
+      // IMAGE -> PDF
+      if (fromFormat === "image" && toFormat === "pdf") {
+        const pdfName = customName.trim() !== "" ? customName : "converted";
+
+        const outputPath = `${outputFolder}\\${pdfName}.pdf`;
 
         await invoke("images_to_pdf", {
           imagePaths: filePaths,
 
-          outputPath: savePath,
+          outputPath,
         });
 
         alert("PDF created successfully");
@@ -114,32 +183,57 @@ function App() {
         return;
       }
 
-      // NORMAL IMAGE CONVERSION
-      for (let i = 0; i < filePaths.length; i++) {
-        const path = filePaths[i];
+      // PDF -> PNG
+      if (fromFormat === "pdf" && toFormat === "png") {
+        for (let i = 0; i < filePaths.length; i++) {
+          const path = filePaths[i];
 
-        const name = fileNames[i];
+          const name = fileNames[i];
 
-        const suggestedName = `${name.split(".")[0]}_converted.${targetFormat}`;
+          const baseName =
+            customName.trim() !== ""
+              ? `${customName}_${i + 1}`
+              : name.split(".")[0];
 
-        const savePath = await save({
-          defaultPath: suggestedName,
-        });
+          const outputPath = `${outputFolder}\\${baseName}`;
 
-        if (!savePath) {
-          continue;
+          await invoke("pdf_to_images", {
+            inputPath: path,
+
+            outputDir: outputPath,
+          });
         }
 
-        await invoke("convert_image", {
-          inputPath: path,
+        alert("PDF conversion completed");
 
-          outputPath: savePath,
-
-          outputFormat: targetFormat,
-        });
+        return;
       }
 
-      alert("Batch conversion completed");
+      // IMAGE -> IMAGE
+      if (fromFormat === "image") {
+        for (let i = 0; i < filePaths.length; i++) {
+          const path = filePaths[i];
+
+          const name = fileNames[i];
+
+          const baseName =
+            customName.trim() !== ""
+              ? `${customName}_${i + 1}`
+              : name.split(".")[0];
+
+          const outputPath = `${outputFolder}\\${baseName}.${toFormat}`;
+
+          await invoke("convert_image", {
+            inputPath: path,
+
+            outputPath,
+
+            outputFormat: toFormat,
+          });
+        }
+
+        alert("Batch conversion completed");
+      }
     } catch (error) {
       console.error(error);
 
@@ -179,6 +273,75 @@ function App() {
         >
           Universal File Converter
         </h1>
+
+        <select
+          value={fromFormat}
+          onChange={(e) => {
+            setFromFormat(e.target.value);
+
+            setFileNames([]);
+
+            setFilePaths([]);
+          }}
+          style={{
+            padding: "10px",
+            borderRadius: "6px",
+          }}
+        >
+          <option value="image">Images</option>
+
+          <option value="pdf">PDF</option>
+        </select>
+
+        <select
+          value={toFormat}
+          onChange={(e) => setToFormat(e.target.value)}
+          style={{
+            padding: "10px",
+            borderRadius: "6px",
+          }}
+        >
+          {fromFormat === "image" && (
+            <>
+              <option value="png">PNG</option>
+
+              <option value="jpg">JPG</option>
+
+              <option value="webp">WEBP</option>
+
+              <option value="pdf">PDF</option>
+            </>
+          )}
+
+          {fromFormat === "pdf" && (
+            <>
+              <option value="png">PNG</option>
+
+              <option value="compressed">Compressed PDF</option>
+            </>
+          )}
+        </select>
+
+        {fromFormat === "pdf" && toFormat === "compressed" && (
+          <select
+            value={pdfQuality}
+            onChange={(e) => setPdfQuality(e.target.value)}
+            style={{
+              padding: "10px",
+              borderRadius: "6px",
+            }}
+          >
+            <option value="extreme">Extreme Compression</option>
+
+            <option value="very_small">Very Small File</option>
+
+            <option value="small">Small Size</option>
+
+            <option value="balanced">Balanced</option>
+
+            <option value="high">High Quality</option>
+          </select>
+        )}
 
         <div
           onClick={selectFile}
@@ -227,7 +390,9 @@ function App() {
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
+
                     alignItems: "center",
+
                     marginBottom: "8px",
                   }}
                 >
@@ -271,22 +436,59 @@ function App() {
           </div>
         )}
 
-        <select
-          value={targetFormat}
-          onChange={(e) => setTargetFormat(e.target.value)}
+        <button
+          onClick={selectOutputFolder}
           style={{
-            padding: "10px",
-            borderRadius: "6px",
+            padding: "12px",
+
+            border: "none",
+
+            borderRadius: "8px",
+
+            backgroundColor: "#2563eb",
+
+            color: "white",
+
+            fontSize: "16px",
+
+            cursor: "pointer",
           }}
         >
-          <option value="png">PNG</option>
+          Select Output Folder
+        </button>
 
-          <option value="jpg">JPG</option>
+        {fromFormat === "image" && toFormat === "pdf" && (
+          <input
+            type="text"
+            placeholder="PDF file name"
+            value={customName}
+            onChange={(e) => setCustomName(e.target.value)}
+            style={{
+              padding: "12px",
 
-          <option value="webp">WEBP</option>
+              borderRadius: "8px",
 
-          <option value="pdf">PDF</option>
-        </select>
+              border: "none",
+
+              backgroundColor: "#2a2a2a",
+
+              color: "white",
+
+              fontSize: "14px",
+            }}
+          />
+        )}
+
+        {outputFolder && (
+          <p
+            style={{
+              fontSize: "14px",
+              color: "#aaa",
+            }}
+          >
+            Output Folder: {outputFolder}
+          </p>
+        )}
 
         <button
           onClick={handleConvert}
@@ -308,6 +510,31 @@ function App() {
           }}
         >
           {loading ? "Converting..." : "Convert Files"}
+        </button>
+
+        <button
+          onClick={() => {
+            setFileNames([]);
+
+            setFilePaths([]);
+          }}
+          style={{
+            padding: "12px",
+
+            border: "none",
+
+            borderRadius: "8px",
+
+            backgroundColor: "#444",
+
+            color: "white",
+
+            fontSize: "16px",
+
+            cursor: "pointer",
+          }}
+        >
+          Clear All
         </button>
       </div>
     </div>
