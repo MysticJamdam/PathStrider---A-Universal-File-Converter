@@ -1,5 +1,7 @@
 use image::ImageFormat;
 
+use std::process::Command;
+
 #[tauri::command]
 fn convert_image(
     input_path: String,
@@ -36,6 +38,42 @@ fn convert_image(
     Ok(output_path)
 }
 
+#[tauri::command]
+fn images_to_pdf(
+    image_paths: Vec<String>,
+    output_path: String,
+) -> Result<String, String> {
+
+    let mut command =
+        Command::new("magick");
+
+    for path in &image_paths {
+
+        command.arg(path);
+    }
+
+    command.arg(&output_path);
+
+    let status =
+        command
+            .status()
+            .map_err(
+                |e| e.to_string()
+            )?;
+
+    if status.success() {
+
+        Ok(output_path)
+
+    } else {
+
+        Err(
+            "Image to PDF failed"
+                .into()
+        )
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
 
@@ -47,7 +85,8 @@ pub fn run() {
 
         .invoke_handler(
             tauri::generate_handler![
-                convert_image
+                convert_image,
+                images_to_pdf
             ]
         )
 
