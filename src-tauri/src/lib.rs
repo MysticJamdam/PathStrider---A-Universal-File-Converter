@@ -6,6 +6,10 @@ use std::process::Command;
 
 use tauri::Manager;
 
+use std::os::windows::process::CommandExt;
+
+
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 
 fn get_ghostscript_path(
@@ -124,6 +128,10 @@ fn images_to_pdf(
             magick_path
         );
 
+    command.creation_flags(
+        CREATE_NO_WINDOW
+    );
+
     for path in &image_paths {
 
         command.arg(path);
@@ -202,55 +210,57 @@ async fn compress_pdf(
                 Command::new(
                     gs_path
                 )
+                .creation_flags(CREATE_NO_WINDOW)
 
                 .args([
 
-                    "-sDEVICE=pdfwrite",
+    "-sDEVICE=pdfwrite",
 
-                    "-dCompatibilityLevel=1.4",
+    "-dCompatibilityLevel=1.7",
 
-                    &format!(
-                        "-dPDFSETTINGS={}",
-                        preset
-                    ),
+    &format!(
+        "-dPDFSETTINGS={}",
+        preset
+    ),
 
-                    "-dNOPAUSE",
+    "-dNOPAUSE",
 
-                    "-dQUIET",
+    "-dQUIET",
 
-                    "-dBATCH",
+    "-dBATCH",
 
-                    // COLOR IMAGES
-                    "-dDownsampleColorImages=true",
+    "-dDetectDuplicateImages=true",
 
-                    &format!(
-                        "-dColorImageResolution={}",
-                        resolution
-                    ),
+    "-dCompressFonts=true",
 
-                    // GRAYSCALE IMAGES
-                    "-dDownsampleGrayImages=true",
+    "-dDownsampleColorImages=true",
 
-                    &format!(
-                        "-dGrayImageResolution={}",
-                        resolution
-                    ),
+    &format!(
+        "-dColorImageResolution={}",
+        resolution
+    ),
 
-                    // MONO IMAGES
-                    "-dDownsampleMonoImages=true",
+    "-dDownsampleGrayImages=true",
 
-                    &format!(
-                        "-dMonoImageResolution={}",
-                        resolution
-                    ),
+    &format!(
+        "-dGrayImageResolution={}",
+        resolution
+    ),
 
-                    &format!(
-                        "-sOutputFile={}",
-                        output_path
-                    ),
+    "-dDownsampleMonoImages=true",
 
-                    &input_path,
-                ])
+    &format!(
+        "-dMonoImageResolution={}",
+        resolution
+    ),
+
+    &format!(
+        "-sOutputFile={}",
+        output_path
+    ),
+
+    &input_path,
+])
 
                 .status()
 
@@ -298,6 +308,10 @@ fn check_dependencies(
 
         if Command::new(gs_path)
 
+            .creation_flags(
+                CREATE_NO_WINDOW
+            )
+
             .arg("-version")
 
             .output()
@@ -325,6 +339,10 @@ fn check_dependencies(
     {
 
         if Command::new(magick_path)
+
+            .creation_flags(
+                CREATE_NO_WINDOW
+            )
 
             .arg("-version")
 
