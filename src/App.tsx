@@ -6,6 +6,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { open } from "@tauri-apps/plugin-dialog";
 
+import toast, { Toaster } from "react-hot-toast";
+
 function App() {
   const [isDragging, setIsDragging] = useState(false);
 
@@ -25,7 +27,21 @@ function App() {
 
   const [pdfQuality, setPdfQuality] = useState("balanced");
 
+  const [missingDeps, setMissingDeps] = useState<string[]>([]);
+
   useEffect(() => {
+    const checkDeps = async () => {
+      try {
+        const result = await invoke<string[]>("check_dependencies");
+
+        setMissingDeps(result);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    checkDeps();
+
     const appWindow = getCurrentWindow();
 
     const setup = async () => {
@@ -124,13 +140,13 @@ function App() {
 
   const handleConvert = async () => {
     if (filePaths.length === 0) {
-      alert("Select files");
+      toast("Select files");
 
       return;
     }
 
     if (!outputFolder) {
-      alert("Select output folder");
+      toast("Select output folder");
 
       return;
     }
@@ -161,7 +177,7 @@ function App() {
           });
         }
 
-        alert("PDF compression completed");
+        toast.success("PDF compression completed");
 
         return;
       }
@@ -178,7 +194,7 @@ function App() {
           outputPath,
         });
 
-        alert("PDF created successfully");
+        toast.success("PDF created successfully");
 
         return;
       }
@@ -204,7 +220,7 @@ function App() {
           });
         }
 
-        alert("PDF conversion completed");
+        toast.success("PDF conversion completed");
 
         return;
       }
@@ -232,12 +248,12 @@ function App() {
           });
         }
 
-        alert("Batch conversion completed");
+        toast.success("Batch conversion completed");
       }
     } catch (error) {
       console.error(error);
 
-      alert(`Conversion failed:\n${error}`);
+      toast.error(`Conversion failed:\n${error}`);
     } finally {
       setLoading(false);
     }
@@ -246,18 +262,31 @@ function App() {
   return (
     <div
       style={{
-        height: "100vh",
+        minHeight: "100vh",
         display: "flex",
         justifyContent: "center",
-        alignItems: "center",
+        alignItems: "flex-start",
+        paddingTop: "40px",
+        boxSizing: "border-box",
         backgroundColor: "#111",
         color: "white",
         fontFamily: "Arial",
       }}
     >
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            background: "#222",
+            color: "#fff",
+            border: "1px solid #444",
+          },
+        }}
+      />
       <div
         style={{
-          width: "500px",
+          width: "100%",
+          maxWidth: "700px",
           padding: "30px",
           borderRadius: "12px",
           backgroundColor: "#1e1e1e",
@@ -273,6 +302,34 @@ function App() {
         >
           Universal File Converter
         </h1>
+
+        {missingDeps.length > 0 && (
+          <div
+            style={{
+              backgroundColor: "#4b1d1d",
+
+              padding: "12px",
+
+              borderRadius: "8px",
+
+              color: "#ffb3b3",
+
+              fontSize: "14px",
+            }}
+          >
+            <strong>Missing Dependencies:</strong>
+
+            <ul
+              style={{
+                marginTop: "8px",
+              }}
+            >
+              {missingDeps.map((dep) => (
+                <li key={dep}>{dep}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <select
           value={fromFormat}
